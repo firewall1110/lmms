@@ -180,11 +180,13 @@ bool AudioJack::initJackClient()
 
 
 
+extern void syncJackd(jack_client_t* client); // from core/JackTransport.cpp
 void AudioJack::startProcessing()
 {
 	if (m_active || m_client == nullptr)
 	{
 		m_stopped = false;
+		syncJackd(m_client); // from core/JackTransport.cpp
 		return;
 	}
 
@@ -218,6 +220,7 @@ void AudioJack::startProcessing()
 	}
 
 	m_stopped = false;
+	syncJackd(m_client); // from core/JackTransport.cpp
 	jack_free(ports);
 }
 
@@ -227,6 +230,7 @@ void AudioJack::startProcessing()
 void AudioJack::stopProcessing()
 {
 	m_stopped = true;
+	syncJackd(nullptr); // from core/JackTransport.cpp
 }
 
 void AudioJack::registerPort(AudioPort* port)

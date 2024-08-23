@@ -38,6 +38,7 @@
 #include "ControllerRackView.h"
 #include "ControllerConnection.h"
 #include "EnvelopeAndLfoParameters.h"
+#include "JackTransport.h"
 #include "Mixer.h"
 #include "MixerView.h"
 #include "GuiApplication.h"
@@ -115,6 +116,10 @@ Song::Song() :
 			this, SLOT(masterVolumeChanged()), Qt::DirectConnection );
 /*	connect( &m_masterPitchModel, SIGNAL(dataChanged()),
 			this, SLOT(masterPitchChanged()));*/
+
+#ifdef LMMS_HAVE_JACK
+	connect( this, SIGNAL( playbackStateChanged() ), this, SLOT( onPlaybackStateChanged() ) );
+#endif
 
 	qRegisterMetaType<lmms::Note>( "lmms::Note" );
 	setType( Type::Song );
@@ -245,6 +250,10 @@ void Song::processNextBuffer()
 			setToTime(begin);
 			m_vstSyncController.setPlaybackJumped(true);
 			emit updateSampleTracks();
+#ifdef LMMS_HAVE_JACK
+			//Invoked LMMS change plaing position in loop mode
+			SyncHook::jump();
+#endif
 			return true;
 		}
 		return false;
@@ -656,6 +665,13 @@ void Song::stop()
 	m_paused = false;
 	m_recording = true;
 	m_playing = false;
+#ifdef LMMS_HAVE_JACK
+	if (m_playMode < Song::PlayMode::Pattern) 
+	{ 
+		//Invoke on stop event, but only plaing song. 
+		SyncHook::jump();	// exSyncSendPosition(); 
+	}
+#endif
 
 	switch (timeline.stopBehaviour())
 	{
@@ -1418,6 +1434,18 @@ void Song::updateFramesPerTick()
 	Engine::updateFramesPerTick();
 }
 
+
+
+
+#ifdef LMMS_HAVE_JACK
+void Song::onPlaybackStateChanged()
+{
+	if (m_playMode < Song::PlayMode::Pattern) 
+	{
+		if (m_playing) { SyncHook::start(); } else { SyncHook::stop(); }
+	}
+}
+#endif
 
 
 

@@ -30,6 +30,7 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMdiArea>
+#include <QPushButton> 
 #include <QScrollBar>
 #include <QSlider>
 #include <QTimeLine>
@@ -45,6 +46,7 @@
 #include "DeprecationHelper.h"
 #include "embed.h"
 #include "GuiApplication.h"
+#include "JackTransport.h"
 #include "LcdSpinBox.h"
 #include "MainWindow.h"
 #include "MeterDialog.h"
@@ -102,8 +104,11 @@ SongEditor::SongEditor( Song * song ) :
 		m_song->getTimeline(Song::PlayMode::Song),
 		m_currentPosition, Song::PlayMode::Song, this
 	);
+#ifdef LMMS_HAVE_JACK
+	m_timeLine->syncSetShouldSend(); // Mark TimeLineWidget for sending jump 
+#endif
 	connect(this, &TrackContainerView::positionChanged, m_timeLine, &TimeLineWidget::updatePosition);
-	connect( m_timeLine, SIGNAL( positionChanged( const lmms::TimePos& ) ),
+	connect( m_timeLine, SIGNAL( positionChanged( const TimePos& ) ),
 			this, SLOT( updatePosition( const lmms::TimePos& ) ) );
 	connect( m_timeLine, SIGNAL(regionSelectedFromPixels(int,int)),
 			this, SLOT(selectRegionFromPixels(int,int)));
@@ -227,6 +232,22 @@ SongEditor::SongEditor( Song * song ) :
 	vcw_layout->addStretch();
 
 	getGUI()->mainWindow()->addWidgetToToolBar( vc_w );
+
+#ifdef LMMS_HAVE_JACK
+	// toggle On/Off button:
+	m_syncButton = new QPushButton(tr("JackSync") , tb);
+	m_syncButton->setToolTip(tr("play/position sync. with JACK audio interface"));
+	m_syncButton->setStyleSheet("background-color:black");
+	m_syncButton->setFocusPolicy(Qt::NoFocus);
+	connect(m_syncButton, SIGNAL(clicked()), this, SLOT(toggleSync()));
+	int syncBoxCol = getGUI()->mainWindow()->addWidgetToToolBar(m_syncButton, 0);
+	// toggle mode button:
+	m_syncModeButton = new QPushButton(syncGetModeString(SyncCtl::getMode()) , tb);
+	m_syncModeButton->setToolTip(tr("toggle [Leader] , [Follower] , [Duplex]"));
+	m_syncModeButton->setFocusPolicy(Qt::NoFocus);
+	connect(m_syncModeButton, SIGNAL(clicked()), this, SLOT(toggleSyncMode()));
+	getGUI()->mainWindow()->addWidgetToToolBar(m_syncModeButton, 1, syncBoxCol);
+#endif
 
 	static_cast<QVBoxLayout *>( layout() )->insertWidget( 0, m_timeLine );
 
@@ -715,6 +736,50 @@ void SongEditor::hideMasterPitchFloat( void )
 
 
 
+#ifdef LMMS_HAVE_JACK
+
+
+const char * SongEditor::syncGetModeString(enum SyncCtl::SyncMode mode)
+{
+	static const char * syncModeStrings[SyncCtl::Last]
+										= {"Leader", "Follower", "Duplex"};
+	const char *result = "";
+	if (mode < SyncCtl::Last) 
+	{ 
+		result = syncModeStrings[mode]; 
+	}
+	return result;
+}
+
+
+
+
+void SongEditor::toggleSync()
+{
+	bool on = SyncCtl::toggleOnOff();
+	if (on)
+	{
+		m_syncButton->setStyleSheet("background-color:green;");
+		m_syncModeButton->setText( syncGetModeString(SyncCtl::getMode()) );
+	} else {
+		m_syncButton->setStyleSheet("background-color:black");
+	}
+	if (!SyncCtl::have()) { m_syncModeButton->setText(""); }
+}
+
+
+
+
+void SongEditor::toggleSyncMode()
+{
+	enum SyncCtl::SyncMode mode = SyncCtl::toggleMode();
+	m_syncModeButton->setText(syncGetModeString(mode));
+}
+
+#endif // LMMS_HAVE_JACK
+
+
+
 void SongEditor::updateScrollBar(int len)
 {
 	m_leftRightScroll->setMaximum(len * TimePos::ticksPerBar());
@@ -759,6 +824,11 @@ void SongEditor::updatePosition( const TimePos & t )
 	const bool compactTrackButtons = ConfigManager::inst()->value("ui", "compacttrackbuttons").toInt();
 	const auto widgetWidth = compactTrackButtons ? DEFAULT_SETTINGS_WIDGET_WIDTH_COMPACT : DEFAULT_SETTINGS_WIDGET_WIDTH;
 	const auto trackOpWidth = compactTrackButtons ? TRACK_OP_WIDTH_COMPACT : TRACK_OP_WIDTH;
+	
+#ifdef LMMS_HAVE_JACK
+	//Need be called periodically at least 10 times in second, especially, when song is stopped
+	SyncHook::pulse();
+#endif
 
 	if ((m_song->isPlaying() && m_song->m_playMode == Song::PlayMode::Song)
 							|| m_scrollBack)

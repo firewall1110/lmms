@@ -157,6 +157,11 @@ public:
 					m_ppb / TimePos::ticksPerBar() );
 	}
 
+#ifdef LMMS_HAVE_JACK
+	inline bool syncShouldSend() { return m_parentIsSongEditor; }
+	inline void syncSetShouldSend() { m_parentIsSongEditor = true; }
+#endif
+
 signals:
 	void positionChanged(const lmms::TimePos& postion);
 	void regionSelectedFromPixels( int, int );
@@ -233,6 +238,10 @@ private:
 	int m_initalXSelect;
 
 	Action m_action = Action::NoAction;
+
+#ifdef LMMS_HAVE_JACK
+	bool m_parentIsSongEditor; // used only by ExternalSync
+#endif
 };
 
 } // namespace lmms::gui
