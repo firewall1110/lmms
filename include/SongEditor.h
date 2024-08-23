@@ -28,9 +28,11 @@
 
 #include "AutomatableModel.h"
 #include "Editor.h"
+#include "JackTransport.h"
 #include "TrackContainerView.h"
 
 class QLabel;
+class QPushButton;
 class QScrollBar;
 
 namespace lmms
@@ -107,6 +109,11 @@ private slots:
 	void updateMasterPitchFloat( int new_val );
 	void hideMasterPitchFloat();
 
+#ifdef LMMS_HAVE_JACK
+	void toggleSync(); //!< toggle On/Off
+	void toggleSyncMode(); //!< toggle "Master"/"Slave"/"Duplex"
+#endif
+
 	void updateScrollBar(int len);
 
 	void zoomingChanged();
@@ -129,6 +136,12 @@ private:
 	QScrollBar * m_leftRightScroll;
 
 	LcdSpinBox * m_tempoSpinBox;
+
+#ifdef LMMS_HAVE_JACK
+	QPushButton * m_syncButton;
+	QPushButton * m_syncModeButton;
+	static const char * syncGetModeString(enum lmms::SyncCtl::SyncMode mode);
+#endif
 
 	TimeLineWidget * m_timeLine;
 

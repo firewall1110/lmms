@@ -31,6 +31,7 @@ set(LMMS_SRCS
 	core/InstrumentFunctions.cpp
 	core/InstrumentPlayHandle.cpp
 	core/InstrumentSoundShaping.cpp
+	core/JackTransport.cpp
 	core/JournallingObject.cpp
 	core/Keymap.cpp
 	core/Ladspa2LMMS.cpp

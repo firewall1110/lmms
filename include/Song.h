@@ -33,6 +33,7 @@
 
 #include "AudioEngine.h"
 #include "Controller.h"
+#include "JackTransport.h"
 #include "lmms_constants.h"
 #include "MeterModel.h"
 #include "Timeline.h"
@@ -394,6 +395,9 @@ public slots:
 
 	void addPatternTrack();
 
+#ifdef LMMS_HAVE_JACK
+	void onPlaybackStateChanged();
+#endif
 
 private slots:
 	void insertBar();

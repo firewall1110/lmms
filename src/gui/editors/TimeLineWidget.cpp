@@ -36,6 +36,7 @@
 
 #include "ConfigManager.h"
 #include "embed.h"
+#include "JackTransport.h"
 #include "GuiApplication.h"
 #include "NStateButton.h"
 #include "TextFloat.h"
@@ -52,6 +53,9 @@ TimeLineWidget::TimeLineWidget(const int xoff, const int yoff, const float ppb, 
 		const TimePos& begin, Song::PlayMode mode, QWidget* parent) :
 	QWidget{parent},
 	m_xOffset{xoff},
+#ifdef LMMS_HAVE_JACK
+	m_parentIsSongEditor(false), // default mark of all TimeLineWidget objects (ExternalSync)
+#endif
 	m_ppb{ppb},
 	m_pos{pos},
 	m_timeline{&timeline},
@@ -345,6 +349,10 @@ void TimeLineWidget::mouseMoveEvent( QMouseEvent* event )
 			m_pos.setCurrentFrame( 0 );
 			m_pos.setJumped( true );
 			updatePosition();
+#ifdef LMMS_HAVE_JACK
+			//Invoked when user change plaing position by mouse and only if Song Editor TimeLine
+			if (syncShouldSend()) { SyncHook::jump(); }
+#endif
 			break;
 
 		case Action::MoveLoopBegin:
