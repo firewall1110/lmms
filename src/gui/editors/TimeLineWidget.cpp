@@ -53,14 +53,14 @@ TimeLineWidget::TimeLineWidget(const int xoff, const int yoff, const float ppb, 
 		const TimePos& begin, Song::PlayMode mode, QWidget* parent) :
 	QWidget{parent},
 	m_xOffset{xoff},
-#ifdef LMMS_HAVE_JACK
-	m_parentIsSongEditor(false), // default mark of all TimeLineWidget objects (ExternalSync)
-#endif
 	m_ppb{ppb},
 	m_pos{pos},
 	m_timeline{&timeline},
 	m_begin{begin},
-	m_mode{mode}
+	m_mode{mode},
+#ifdef LMMS_HAVE_JACK
+	m_parentIsSongEditor(false) // default mark of all TimeLineWidget objects (ExternalSync)
+#endif
 {
 	setAttribute( Qt::WA_OpaquePaintEvent, true );
 	move( 0, yoff );

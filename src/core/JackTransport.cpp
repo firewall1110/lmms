@@ -40,9 +40,6 @@ namespace lmms
 
 /* -----------------------ExSync private --------------------------- */
 
-
-
-
 /**
 	 Functions to control LMMS position/playing in Slave || Duplex
 	 LMMS react only in if ExSync is on (button is green)
@@ -62,10 +59,6 @@ struct ExSyncCallbacks
 };
 
 static struct ExSyncCallbacks * getFollowerCallBacks();
-
-
-
-/* Jack Transport target implementation private part (BEGIN): */
 
 
 static jack_client_t * s_syncJackd = nullptr; //!< Set by Jack audio 
@@ -123,14 +116,13 @@ static void jackPlay(bool playing)
 }
 
 
-static void jackPosition(const SongExtendedPos *pos)
+static void jackPosition(f_cnt_t frame)
 {
 	if (s_syncJackd)
 	{
-		jack_transport_locate(s_syncJackd, pos->frame);
+		jack_transport_locate(s_syncJackd, frame);
 	}
 }
-
 
 static bool jackStopped()
 {
@@ -165,25 +157,6 @@ static void jackSlave(bool set)
 	}
 }
 
-
-
-/* (END) [Jack Transport target implementation ] */
-
-
-
-
-/* NEW target implementation private code here */
-
-
-
-
-static struct ExSyncHandler s_handler = {
-	&jackAvailable,
-	&jackPlay,
-	&jackPosition,
-	&jackStopped,
-	&jackSlave
-};
 
 
 /**
@@ -243,10 +216,7 @@ static struct ExSyncCallbacks s_SyncCallbacks = {
 };
 
 
-/* -----------------------ExSync public ----------------------------- */
-
-
-/* Jack Transport target implementation (public part): */
+/* Jack Transport implementation (public part): */
 
 
 void syncJackd(jack_client_t* client)
@@ -255,33 +225,20 @@ void syncJackd(jack_client_t* client)
 }
 
 
-/* NEW target implementation public code here */
-
-
-/* Target independent part: */
-
-
-struct ExSyncHandler * exSyncGetHandler()
-{
-	return &s_handler;
-}
-
-
-/* class ExSyncHook: public part */
+/* class SyncHook: public part */
 
 
 static f_cnt_t s_lastFrame = 0; // Save last frame position to catch change
 void SyncHook::pulse()
 {
 	struct ExSyncCallbacks *slaveCallBacks  = getFollowerCallBacks();
-	struct ExSyncHandler *sync = exSyncGetHandler();
 	auto lSong = Engine::getSong();
 	f_cnt_t lFrame = 0;
-	if (sync && slaveCallBacks && sync->Stopped()) 
+	if (slaveCallBacks && jackStopped()) 
 	{ 
 		slaveCallBacks->mode(false); 
 	}
-	if (sync &&  lSong->isStopped())
+	if (lSong->isStopped())
 	{
 		lFrame = lSong->getFrames();
 		if (s_SyncLead && s_SyncOn && (lFrame != s_lastFrame) )
@@ -295,31 +252,19 @@ void SyncHook::pulse()
 
 void SyncHook::jump()
 {
-	struct SongExtendedPos pos;
 	auto lSong = Engine::getSong();
 	if ((! lSong->isExporting()) && s_SyncLead && s_SyncOn)
 	{
-		pos.bar = lSong->getBars();
-		pos.beat = lSong->getBeat();
-		pos.tick = lSong->getBeatTicks();
-		pos.barStartTick = lSong->getTicks();
-		pos.beatsPerBar = lSong->getTimeSigModel().numeratorModel().value();
-		pos.beatType = lSong->getTimeSigModel().denominatorModel().value();
-		pos.ticksPerBeat = lSong->getPlayPos().ticksPerBeat( lSong->getTimeSigModel() );
-		pos.tempo = lSong->getTempo();
-		pos.frame = lSong->getFrames();
-		ExSyncHandler * sync =  exSyncGetHandler();
-		if (sync) { sync->sendPosition(&pos); }
+		jackPosition(lSong->getFrames());
 	}
 }
 
 
 void SyncHook::start()
 {
-	struct ExSyncHandler *sync = exSyncGetHandler();
-	if (sync && s_SyncOn)
+	if (s_SyncOn)
 	{
-		sync->sendPlay(true);
+		jackPlay(true);
 		if( SyncCtl::Leader == s_SyncMode) { jump(); }
 	}
 }
@@ -327,10 +272,9 @@ void SyncHook::start()
 
 void SyncHook::stop()
 {
-	struct ExSyncHandler *sync = exSyncGetHandler();
-	if (sync && s_SyncOn)
+	if (s_SyncOn)
 	{
-		sync->sendPlay(false);
+		jackPlay(false);
 		if( SyncCtl::Leader == s_SyncMode) { jump(); }
 	}
 }
@@ -341,8 +285,7 @@ void SyncHook::stop()
 
 SyncCtl::SyncMode SyncCtl::toggleMode()
 {
-	ExSyncHandler * sync =  exSyncGetHandler();
-	if ( !sync->availableNow() ) 
+	if ( !jackAvailable() ) 
 	{
 		return s_SyncMode;
 	}
@@ -368,8 +311,7 @@ SyncCtl::SyncMode SyncCtl::toggleMode()
 
 void SyncCtl::setMode(SyncCtl::SyncMode mode)
 {
-	ExSyncHandler * sync =  exSyncGetHandler();
-	if ( !sync->availableNow() ) 
+	if ( !jackAvailable() ) 
 	{
 		return;
 	}
@@ -378,19 +320,19 @@ void SyncCtl::setMode(SyncCtl::SyncMode mode)
 	case Leader:
 		s_SyncFollow = false;
 		s_SyncLead = true;
-		sync->setSlave(false);
+		jackSlave(false);
 		s_followerCallBacks= nullptr;
 		break;
 	case Follower:
 		s_SyncFollow = true;
 		s_SyncLead = false;
-		sync->setSlave(true);
+		jackSlave(true);
 		s_followerCallBacks= &s_SyncCallbacks;
 		break;
 	case Duplex:
 		s_SyncFollow = true;
 		s_SyncLead = true;
-		sync->setSlave(true);
+		jackSlave(true);
 		s_followerCallBacks= &s_SyncCallbacks;
 		break;
 	default:
@@ -407,9 +349,7 @@ SyncCtl::SyncMode SyncCtl::getMode()
 
 bool SyncCtl::toggleOnOff()
 {
-	ExSyncHandler * sync =  exSyncGetHandler();
-
-	if ( sync->availableNow() )
+	if ( jackAvailable() )
 	{
 		if (s_SyncOn) {	s_SyncOn = false; } else { s_SyncOn = true; }
 	} else {
@@ -421,9 +361,7 @@ bool SyncCtl::toggleOnOff()
 
 bool SyncCtl::have()
 {
-	ExSyncHandler * sync =  exSyncGetHandler();
-	if ( sync->availableNow() ) { return true; }
-	return false;
+	return jackAvailable();
 }
 
 

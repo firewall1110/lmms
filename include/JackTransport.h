@@ -32,41 +32,6 @@
 namespace lmms
 {
 
-// Common target independent part: TODO: remove this
-//! ExSync sending code provide all fields (for future), but here used only @frame
-struct SongExtendedPos
-{
-	bar_t bar;
-	int beat;
-	int tick;
-	int barStartTick;
-	int beatsPerBar;
-	int beatType;
-	tick_t ticksPerBeat;
-	bpm_t tempo;
-	f_cnt_t frame;
-};
-
-// TODO: remove this
-//! Functions, MUST be provided by ExSync driver
-struct ExSyncHandler
-{
-	//! true if synchronisation is available (driver is on)
-	bool (* availableNow)(); 
-	//! driver MUST send start/pause message if @playing is true/false 
-	void (* sendPlay)(bool playing); 
-	//! driver MUST send new position message
-	void (* sendPosition)(const SongExtendedPos *pos);
-	//! driver check if target plaing just stopped (after last call) 
-	bool (* Stopped)();
-	//! driver MUST start/stop remote LMMS controling @set true/false
-	void (* setSlave)(bool set);
-};
-
-//  TODO: remove this
-struct ExSyncHandler * exSyncGetHandler();
-
-
 /** 
 	Catch events,needed to sent.
 	Events:
