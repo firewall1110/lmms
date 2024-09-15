@@ -336,5 +336,5 @@ static void jackFollow(bool set)
 
 } // namespace lmms 
 
-#endif // LMMS_HAVE_EXTERNALSYNC
+#endif // LMMS_HAVE_JACK
 
