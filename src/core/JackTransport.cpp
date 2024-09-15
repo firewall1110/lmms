@@ -41,145 +41,22 @@ namespace lmms
 /* -----------------------ExSync private --------------------------- */
 
 /**
-	 Functions to control LMMS position/playing in Slave || Duplex
-	 LMMS react only in if ExSync is on (button is green)
-	 MUST be provided by ExSync driver
-	 
-	 External code MUST NOT use this functions: this is adapter
-	 from external device events to LMMS (so not included in ExSync.h)
-*/
-struct ExSyncCallbacks
-{
-	//! @playing [true : to start; false : to pause] 
-	void (* mode)(bool playing); 
-	//! change position to @frames;
-	void (* position)(uint32_t frames);
-	//! to calculate frames from time (not used here - jack is working in frames)
-	sample_rate_t (* processingSampleRate)();
-};
-
-static struct ExSyncCallbacks * getFollowerCallBacks();
-
-
-static jack_client_t * s_syncJackd = nullptr; //!< Set by Jack audio 
-static jack_transport_state_t s_lastJackState = JackTransportStopped;
-
-
-/*! Function adapt events from Jack Transport to LMMS  */
-static int syncCallBack(jack_transport_state_t state, jack_position_t *pos, void *arg)
-{
-	struct ExSyncCallbacks *slaveCallBacks  = getFollowerCallBacks();
-	// Now slaveCallBacks is local copy - never be changed by other thread ...
-	if (slaveCallBacks)
-	{
-		switch(state)
-		{
-		case JackTransportStopped:
-			slaveCallBacks->mode(false);
-			slaveCallBacks->position(pos->frame);
-			break;
-		case JackTransportStarting:
-			slaveCallBacks->mode(true);
-			slaveCallBacks->position(pos->frame);
-			break;
-		case JackTransportRolling: //!< mostly not called with this state
-			slaveCallBacks->mode(true);
-			slaveCallBacks->position(pos->frame);
-			break;
-		default:
-			; // not use JackTransportLooping  and JackTransportNetStarting enum
-		}
-	}
-	return 1; 
-}
-
-
-/* Functions needed  to control Jack Transport (adapt events from LMMS) */
-
-
-static bool jackAvailable()
-{
-	if (s_syncJackd) { return true; } else { return false; }
-}
-
-
-static void jackPlay(bool playing)
-{
-	if (s_syncJackd)
-	{
-		if (playing) {
-			jack_transport_start(s_syncJackd);
-		} else {
-			jack_transport_stop(s_syncJackd);
-		}
-	}
-}
-
-
-static void jackPosition(f_cnt_t frame)
-{
-	if (s_syncJackd)
-	{
-		jack_transport_locate(s_syncJackd, frame);
-	}
-}
-
-static bool jackStopped()
-{
-	bool justStopped = false;
-
-	if (s_syncJackd)
-	{ 
-		jack_transport_state_t state = jack_transport_query(s_syncJackd, nullptr);
-		if ((JackTransportStopped == state) && (state != s_lastJackState))
-		{
-			justStopped = true;
-		}
-		s_lastJackState = state;
-	} else {
-		s_lastJackState = JackTransportStopped;
-	}
-
-	return justStopped;
-}
-
-
-static void jackSlave(bool set)
-{
-	if (s_syncJackd)
-	{
-		if (set)
-		{
-			jack_set_sync_callback(s_syncJackd, &syncCallBack, nullptr);
-		} else {
-			jack_set_sync_callback(s_syncJackd, nullptr, nullptr);
-		}
-	}
-}
-
-
-
-/**
 	Model controled by user interface 
 	using View/Controller in SongEditor
 	(include/SongEditor.h, src/gui/editors/SongEditor.cpp)
  */ 
 
-static struct ExSyncCallbacks *s_followerCallBacks= nullptr;
 
-static struct ExSyncCallbacks * getFollowerCallBacks() {return s_followerCallBacks; }
-
-
-/* class ExSyncHook && class ExSyncCtl: private part */
+/* class SyncHook && class SyncCtl: private part */
 
 
-static bool s_SyncFollow = false; //!< (Receave)
-static bool s_SyncLead = true; //!< (Send)
-static bool s_SyncOn = false; //!< (React and Send)
-static SyncCtl::SyncMode s_SyncMode = SyncCtl::Leader; //!< (for ModeButton state)
+static bool s_SyncFollow = false;
+static bool s_SyncLead = true;
+static bool s_SyncOn = false;
+static SyncCtl::SyncMode s_SyncMode = SyncCtl::Leader; // (for ModeButton state)
 
 
-static void exSyncMode(bool playing)
+static void lmmsSyncMode(bool playing)
 {
 	auto lSong = Engine::getSong();
 
@@ -190,7 +67,7 @@ static void exSyncMode(bool playing)
 }
 
 
-static void exSyncPosition(uint32_t frames)
+static void lmmsSyncPosition(uint32_t frames)
 {
 	auto lSong = Engine::getSong();
 
@@ -201,29 +78,22 @@ static void exSyncPosition(uint32_t frames)
 }
 
 
-static sample_rate_t exSyncSampleRate()
-{
-	return Engine::audioEngine()->outputSampleRate();
-}
-
-
-//! Function used by internal code to send messages to LMMS::Song from
-//! external device (in Slave , Duplex modes)
-static struct ExSyncCallbacks s_SyncCallbacks = {
-	&exSyncMode,
-	&exSyncPosition,
-	&exSyncSampleRate
-};
-
-
 /* Jack Transport implementation (public part): */
 
-
+static jack_client_t * s_syncJackd = nullptr; //!< Set by Jack audio 
 void syncJackd(jack_client_t* client)
 {
 	s_syncJackd = client;
 }
 
+
+/* Jack Transport implementation (semiprivate part): */
+
+static bool jackAvailable();
+static void jackPlay(bool playing);
+static void jackPosition(f_cnt_t frame);
+static bool jackStopped();
+static void jackFollow(bool set);
 
 /* class SyncHook: public part */
 
@@ -231,12 +101,11 @@ void syncJackd(jack_client_t* client)
 static f_cnt_t s_lastFrame = 0; // Save last frame position to catch change
 void SyncHook::pulse()
 {
-	struct ExSyncCallbacks *slaveCallBacks  = getFollowerCallBacks();
 	auto lSong = Engine::getSong();
 	f_cnt_t lFrame = 0;
-	if (slaveCallBacks && jackStopped()) 
-	{ 
-		slaveCallBacks->mode(false); 
+	if (s_SyncFollow && jackStopped()) 
+	{
+		lmmsSyncMode(false); 
 	}
 	if (lSong->isStopped())
 	{
@@ -320,20 +189,17 @@ void SyncCtl::setMode(SyncCtl::SyncMode mode)
 	case Leader:
 		s_SyncFollow = false;
 		s_SyncLead = true;
-		jackSlave(false);
-		s_followerCallBacks= nullptr;
+		jackFollow(false);
 		break;
 	case Follower:
 		s_SyncFollow = true;
 		s_SyncLead = false;
-		jackSlave(true);
-		s_followerCallBacks= &s_SyncCallbacks;
+		jackFollow(true);
 		break;
 	case Duplex:
 		s_SyncFollow = true;
 		s_SyncLead = true;
-		jackSlave(true);
-		s_followerCallBacks= &s_SyncCallbacks;
+		jackFollow(true);
 		break;
 	default:
 		s_SyncOn = false; // turn Off 
@@ -362,6 +228,109 @@ bool SyncCtl::toggleOnOff()
 bool SyncCtl::have()
 {
 	return jackAvailable();
+}
+
+
+
+
+
+// Communication with jack transport:
+
+
+
+
+
+/*! Function adapt events from Jack Transport to LMMS  */
+static int syncCallBack(jack_transport_state_t state, jack_position_t *pos, void *arg)
+{
+	if (s_SyncFollow)
+	{
+		switch(state)
+		{
+		case JackTransportStopped:
+			lmmsSyncMode(false);
+			lmmsSyncPosition(pos->frame);
+			break;
+		case JackTransportStarting:
+			lmmsSyncMode(true);
+			lmmsSyncPosition(pos->frame);
+			break;
+		case JackTransportRolling: // mostly not called with this state
+			lmmsSyncMode(true);
+			lmmsSyncPosition(pos->frame);
+			break;
+		default:
+			; // not use JackTransportLooping  and JackTransportNetStarting enum
+		}
+	}
+	return 1; 
+}
+
+
+/* Functions needed  to control Jack Transport (adapt events from LMMS) */
+
+
+static bool jackAvailable()
+{
+	if (s_syncJackd) { return true; } else { return false; }
+}
+
+
+static void jackPlay(bool playing)
+{
+	if (s_syncJackd)
+	{
+		if (playing) {
+			jack_transport_start(s_syncJackd);
+		} else {
+			jack_transport_stop(s_syncJackd);
+		}
+	}
+}
+
+
+static void jackPosition(f_cnt_t frame)
+{
+	if (s_syncJackd)
+	{
+		jack_transport_locate(s_syncJackd, frame);
+	}
+}
+
+
+
+static jack_transport_state_t s_lastJackState = JackTransportStopped;
+static bool jackStopped()
+{
+	bool justStopped = false;
+
+	if (s_syncJackd)
+	{ 
+		jack_transport_state_t state = jack_transport_query(s_syncJackd, nullptr);
+		if ((JackTransportStopped == state) && (state != s_lastJackState))
+		{
+			justStopped = true;
+		}
+		s_lastJackState = state;
+	} else {
+		s_lastJackState = JackTransportStopped;
+	}
+
+	return justStopped;
+}
+
+
+static void jackFollow(bool set)
+{
+	if (s_syncJackd)
+	{
+		if (set)
+		{
+			jack_set_sync_callback(s_syncJackd, &syncCallBack, nullptr);
+		} else {
+			jack_set_sync_callback(s_syncJackd, nullptr, nullptr);
+		}
+	}
 }
 
 
