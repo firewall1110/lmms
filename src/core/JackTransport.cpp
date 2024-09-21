@@ -87,13 +87,18 @@ void syncJackd(jack_client_t* client)
 }
 
 
-/* Jack Transport implementation (semiprivate part): */
 
-static bool jackAvailable();
-static void jackPlay(bool playing);
-static void jackPosition(f_cnt_t frame);
-static bool jackStopped();
-static void jackFollow(bool set);
+
+class JackTransport
+{
+public:
+	static bool On();
+	static void Start();
+	static void Stop();
+	static void Jump(f_cnt_t frame);
+	static void Follow(bool set);
+	static bool Stopped();
+};
 
 /* class SyncHook: public part */
 
@@ -103,7 +108,7 @@ void SyncHook::pulse()
 {
 	auto lSong = Engine::getSong();
 	f_cnt_t lFrame = 0;
-	if (s_SyncFollow && jackStopped()) 
+	if (s_SyncFollow && JackTransport::Stopped()) 
 	{
 		lmmsSyncMode(false); 
 	}
@@ -124,7 +129,7 @@ void SyncHook::jump()
 	auto lSong = Engine::getSong();
 	if ((! lSong->isExporting()) && s_SyncLead && s_SyncOn)
 	{
-		jackPosition(lSong->getFrames());
+		JackTransport::Jump(lSong->getFrames());
 	}
 }
 
@@ -133,7 +138,7 @@ void SyncHook::start()
 {
 	if (s_SyncOn)
 	{
-		jackPlay(true);
+		JackTransport::Start();
 		if( SyncCtl::Leader == s_SyncMode) { jump(); }
 	}
 }
@@ -143,7 +148,7 @@ void SyncHook::stop()
 {
 	if (s_SyncOn)
 	{
-		jackPlay(false);
+		JackTransport::Stop();
 		if( SyncCtl::Leader == s_SyncMode) { jump(); }
 	}
 }
@@ -154,7 +159,7 @@ void SyncHook::stop()
 
 SyncCtl::SyncMode SyncCtl::toggleMode()
 {
-	if ( !jackAvailable() ) 
+	if ( !JackTransport::On() ) 
 	{
 		return s_SyncMode;
 	}
@@ -180,7 +185,7 @@ SyncCtl::SyncMode SyncCtl::toggleMode()
 
 void SyncCtl::setMode(SyncCtl::SyncMode mode)
 {
-	if ( !jackAvailable() ) 
+	if ( !JackTransport::On() ) 
 	{
 		return;
 	}
@@ -189,17 +194,17 @@ void SyncCtl::setMode(SyncCtl::SyncMode mode)
 	case Leader:
 		s_SyncFollow = false;
 		s_SyncLead = true;
-		jackFollow(false);
+		JackTransport::Follow(false);
 		break;
 	case Follower:
 		s_SyncFollow = true;
 		s_SyncLead = false;
-		jackFollow(true);
+		JackTransport::Follow(true);
 		break;
 	case Duplex:
 		s_SyncFollow = true;
 		s_SyncLead = true;
-		jackFollow(true);
+		JackTransport::Follow(true);
 		break;
 	default:
 		s_SyncOn = false; // turn Off 
@@ -215,7 +220,7 @@ SyncCtl::SyncMode SyncCtl::getMode()
 
 bool SyncCtl::toggleOnOff()
 {
-	if ( jackAvailable() )
+	if ( !JackTransport::On() ) 
 	{
 		if (s_SyncOn) {	s_SyncOn = false; } else { s_SyncOn = true; }
 	} else {
@@ -227,7 +232,7 @@ bool SyncCtl::toggleOnOff()
 
 bool SyncCtl::have()
 {
-	return jackAvailable();
+	return JackTransport::On();
 }
 
 
@@ -267,40 +272,48 @@ static int syncCallBack(jack_transport_state_t state, jack_position_t *pos, void
 }
 
 
-/* Functions needed  to control Jack Transport (adapt events from LMMS) */
+/* Class JackTransport implementation : */
 
-
-static bool jackAvailable()
+bool JackTransport::On()
 {
 	if (s_syncJackd) { return true; } else { return false; }
 }
 
 
-static void jackPlay(bool playing)
+void JackTransport::Start()
+{
+	if (s_syncJackd) { jack_transport_start(s_syncJackd); }
+}
+
+
+void JackTransport::Stop()
+{
+	if (s_syncJackd) { jack_transport_stop(s_syncJackd); }
+}
+
+
+void JackTransport::Jump(f_cnt_t frame)
+{
+	if (s_syncJackd) { jack_transport_locate(s_syncJackd, frame); }
+}
+
+
+void JackTransport::Follow(bool set)
 {
 	if (s_syncJackd)
 	{
-		if (playing) {
-			jack_transport_start(s_syncJackd);
+		if (set)
+		{
+			jack_set_sync_callback(s_syncJackd, &syncCallBack, nullptr);
 		} else {
-			jack_transport_stop(s_syncJackd);
+			jack_set_sync_callback(s_syncJackd, nullptr, nullptr);
 		}
 	}
 }
 
 
-static void jackPosition(f_cnt_t frame)
-{
-	if (s_syncJackd)
-	{
-		jack_transport_locate(s_syncJackd, frame);
-	}
-}
-
-
-
 static jack_transport_state_t s_lastJackState = JackTransportStopped;
-static bool jackStopped()
+bool JackTransport::Stopped()
 {
 	bool justStopped = false;
 
@@ -320,18 +333,6 @@ static bool jackStopped()
 }
 
 
-static void jackFollow(bool set)
-{
-	if (s_syncJackd)
-	{
-		if (set)
-		{
-			jack_set_sync_callback(s_syncJackd, &syncCallBack, nullptr);
-		} else {
-			jack_set_sync_callback(s_syncJackd, nullptr, nullptr);
-		}
-	}
-}
 
 
 } // namespace lmms 
