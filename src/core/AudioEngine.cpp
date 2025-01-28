@@ -31,6 +31,7 @@
 
 #include "AudioEngineWorkerThread.h"
 #include "AudioPort.h"
+#include "JackTransport.h"
 #include "Mixer.h"
 #include "Song.h"
 #include "EnvelopeAndLfoParameters.h"
@@ -181,6 +182,10 @@ AudioEngine::~AudioEngine()
 	{
 		delete[] input;
 	}
+
+#ifdef LMMS_HAVE_JACK
+	SyncHook::pulseStop();
+#endif
 }
 
 

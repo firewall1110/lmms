@@ -44,10 +44,12 @@ namespace lmms
 class SyncHook
 {
 public:
-	static void pulse(); //!< called periodically to catch jump when stopped
 	static void jump(); //!< placed where jump introduced by user or by LMMS
+	static void pulseStop(); //!< stopes internal thread for pulse()
 	static void start();
 	static void stop();
+	// Used only in JackTransport.cpp:
+	static void pulse(); //!< called periodically to catch jump when stopped
 };
 
 /**

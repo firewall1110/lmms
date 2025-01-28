@@ -30,6 +30,8 @@
 #include <weak_libjack.h>
 #endif
 
+#include <chrono>
+#include <thread>
 
 #include "Engine.h"
 #include "Song.h"
@@ -81,6 +83,26 @@ static void lmmsSyncPosition(uint32_t frames)
 /* Jack Transport implementation (public part): */
 
 static jack_client_t * s_syncJackd = nullptr; //!< Set by Jack audio 
+static bool s_threadOn = true;
+static int s_pulsePeriod = 1000;
+
+
+static void s_pulseFunction(int ms)
+ {
+	s_pulsePeriod = ms;
+ 	fprintf(stderr, "DEBUG::pulse_function started\n"); // DEBUG
+	while (s_threadOn)
+ 	{
+		if (s_syncJackd) { SyncHook::pulse(); }
+		std::this_thread::sleep_for(std::chrono::milliseconds(s_pulsePeriod));
+ 	}
+ 	fprintf(stderr, "DEBUG::pulse_function stopped\n"); // DEBUG
+}
+
+
+static std::thread s_pulseThread(s_pulseFunction, 50);
+
+
 void syncJackd(jack_client_t* client)
 {
 	s_syncJackd = client;
@@ -121,6 +143,13 @@ void SyncHook::pulse()
 			jump();
 		}
 	}
+}
+
+
+void SyncHook::pulseStop() //!< Placed in  AudioEngine destructor (AudioRngine.cpp)
+{
+	s_threadOn = false;
+	s_pulseThread.join();
 }
 
 
@@ -220,7 +249,7 @@ SyncCtl::SyncMode SyncCtl::getMode()
 
 bool SyncCtl::toggleOnOff()
 {
-	if ( !JackTransport::On() ) 
+	if ( JackTransport::On() ) 
 	{
 		if (s_SyncOn) {	s_SyncOn = false; } else { s_SyncOn = true; }
 	} else {
