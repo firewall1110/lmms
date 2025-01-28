@@ -103,12 +103,11 @@ static void s_pulseFunction(int ms)
 static std::thread s_pulseThread(s_pulseFunction, 50);
 
 
+
 void syncJackd(jack_client_t* client)
 {
 	s_syncJackd = client;
 }
-
-
 
 
 class JackTransport
@@ -122,6 +121,7 @@ public:
 	static bool Stopped();
 };
 
+
 /* class SyncHook: public part */
 
 
@@ -130,6 +130,7 @@ void SyncHook::pulse()
 {
 	auto lSong = Engine::getSong();
 	f_cnt_t lFrame = 0;
+
 	if (s_SyncFollow && JackTransport::Stopped()) 
 	{
 		lmmsSyncMode(false); 
@@ -360,8 +361,6 @@ bool JackTransport::Stopped()
 
 	return justStopped;
 }
-
-
 
 
 } // namespace lmms 
