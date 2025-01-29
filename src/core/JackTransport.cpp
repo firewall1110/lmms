@@ -30,6 +30,8 @@
 #include <weak_libjack.h>
 #endif
 
+#include <chrono>
+#include <thread>
 
 #include "Engine.h"
 #include "Song.h"
@@ -38,7 +40,7 @@ namespace lmms
 {
 
 
-/* -----------------------ExSync private --------------------------- */
+/* -----------------------JackTransport private --------------------------- */
 
 /**
 	Model controled by user interface 
@@ -81,12 +83,35 @@ static void lmmsSyncPosition(uint32_t frames)
 /* Jack Transport implementation (public part): */
 
 static jack_client_t * s_syncJackd = nullptr; //!< Set by Jack audio 
-void syncJackd(jack_client_t* client)
-{
-	s_syncJackd = client;
+static bool s_threadOn = true;
+static int s_pulsePeriod = 1000;
+
+
+static void s_pulseFunction(int ms)
+ {
+	s_pulsePeriod = ms;
+	while (s_threadOn)
+ 	{
+		if (s_syncJackd) { SyncHook::pulse(); }
+		std::this_thread::sleep_for(std::chrono::milliseconds(s_pulsePeriod));
+ 	}
 }
 
 
+static std::thread *s_pulseThread = nullptr;
+
+
+
+void syncJackd(jack_client_t* client)
+{
+ 	s_syncJackd = client;
+	if (nullptr == client)
+	{
+		if (nullptr != s_pulseThread) { SyncHook::pulseStop() ; }
+	} else {
+		s_pulseThread =  new std::thread(s_pulseFunction, 50);
+	}
+}
 
 
 class JackTransport
@@ -99,6 +124,7 @@ public:
 	static void Follow(bool set);
 	static bool Stopped();
 };
+
 
 /* class SyncHook: public part */
 
@@ -121,6 +147,15 @@ void SyncHook::pulse()
 			jump();
 		}
 	}
+}
+
+
+void SyncHook::pulseStop() //!< Placed in  AudioEngine destructor (AudioRngine.cpp)
+{
+	s_threadOn = false;
+	s_pulseThread->join();
+	delete s_pulseThread;
+	s_pulseThread = nullptr;
 }
 
 
@@ -220,7 +255,7 @@ SyncCtl::SyncMode SyncCtl::getMode()
 
 bool SyncCtl::toggleOnOff()
 {
-	if ( !JackTransport::On() ) 
+	if ( JackTransport::On() ) 
 	{
 		if (s_SyncOn) {	s_SyncOn = false; } else { s_SyncOn = true; }
 	} else {
@@ -331,8 +366,6 @@ bool JackTransport::Stopped()
 
 	return justStopped;
 }
-
-
 
 
 } // namespace lmms 
