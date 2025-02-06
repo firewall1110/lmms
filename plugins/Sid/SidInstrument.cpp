@@ -23,15 +23,13 @@
  *
  */
 
+#include "SidInstrument.h" 
 
 #include <QDomElement>
 
 #include <cmath>
 #include <cstdio>
 
-#include <sid.h>
-
-#include "SidInstrument.h"
 #include "AudioEngine.h"
 #include "Engine.h"
 #include "InstrumentTrack.h"
@@ -136,6 +134,37 @@ SidInstrument::SidInstrument( InstrumentTrack * _instrument_track ) :
 	{
 		m_voice[i] = new VoiceObject( this, i );
 	}
+
+	for (unsigned n = 0; n < SIDMaxNotes; ++n)
+	{
+		auto sid = new reSID::SID();
+		if (sid)
+		{
+			struct SIDElement el = { false, sid };
+			sid->set_sampling_parameters(
+				C64_PAL_CYCLES_PER_SEC, 
+				reSID::SAMPLE_FAST, 
+				Engine::audioEngine()->outputSampleRate());
+			sid->set_chip_model(reSID::MOS8580);
+			sid->enable_filter( true );
+			sid->reset();
+			m_sidStorage.push_back(el);
+		} 
+		else 
+		{
+			fprintf(stderr, "ERROR:SidInstrument::SidInstrument - out of memory!\n");
+		}
+	}
+}
+
+
+SidInstrument::~SidInstrument()
+{
+	for (unsigned n = 0; n < m_sidStorage.size(); ++n)
+	{
+		if (m_sidStorage[n].sid) { delete m_sidStorage[n].sid; }
+	}
+	m_sidStorage.clear();
 }
 
 
@@ -297,7 +326,12 @@ void SidInstrument::playNote( NotePlayHandle * _n,
 
 	if (!_n->m_pluginData)
 	{
-		auto sid = new reSID::SID();
+		auto sid = getSID();
+		if (nullptr == sid)
+		{
+			_n->mute();
+			return;
+		}
 		sid->set_sampling_parameters(clockrate, reSID::SAMPLE_FAST, samplerate);
 		sid->set_chip_model(reSID::MOS8580);
 		sid->enable_filter( true );
@@ -435,7 +469,13 @@ void SidInstrument::playNote( NotePlayHandle * _n,
 
 void SidInstrument::deleteNotePluginData( NotePlayHandle * _n )
 {
-	delete static_cast<reSID::SID*>(_n->m_pluginData);
+	auto sid = static_cast<reSID::SID*>(_n->m_pluginData);
+
+	if (!freeSID(sid))
+	{
+		fprintf(stderr, "ERROR:SidInstrument::deleteNotePluginData: Wild SID!\n");
+		delete sid;
+	}
 }
 
 
@@ -445,6 +485,57 @@ gui::PluginView* SidInstrument::instantiateView( QWidget * _parent )
 {
 	return( new gui::SidInstrumentView( this, _parent ) );
 }
+
+
+
+
+reSID::SID *SidInstrument::getSID()
+{
+	spin();
+	for (unsigned n = 0; n < m_sidStorage.size(); ++n)
+	{
+		if (m_sidStorage[n].sid)
+		{
+			if (!m_sidStorage[n].used)
+			{
+				m_sidStorage[n].used = true;
+				m_lockGet.clear(std::memory_order_release);
+				return m_sidStorage[n].sid;
+			}
+		}
+	}
+
+	m_lockGet.clear(std::memory_order_release);
+	return nullptr;
+}
+
+
+
+
+bool SidInstrument::freeSID(reSID::SID *sid)
+{
+	for (unsigned n = 0; n < m_sidStorage.size(); ++n)
+	{
+		if (sid == m_sidStorage[n].sid)
+		{
+			m_sidStorage[n].used = false;
+			return true;
+		}
+	}
+	return false;
+}
+
+
+
+
+void SidInstrument::spin()
+{
+	while (m_lockGet.test_and_set(std::memory_order_acquire))
+	{
+		;
+	}
+}
+
 
 
 

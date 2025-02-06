@@ -27,6 +27,11 @@
 #ifndef _SID_H
 #define _SID_H
 
+#include <atomic>
+#include <vector>
+
+#include <sid.h>
+
 #include "AutomatableModel.h"
 #include "Instrument.h"
 #include "InstrumentView.h"
@@ -79,6 +84,11 @@ private:
 	friend class gui::SidInstrumentView;
 } ;
 
+struct SIDElement {
+	bool used;
+	reSID::SID *sid;
+};
+
 class SidInstrument : public Instrument
 {
 	Q_OBJECT
@@ -99,7 +109,7 @@ public:
 	constexpr static auto NumChipModels = static_cast<std::size_t>(ChipModel::Count);
 
 	SidInstrument( InstrumentTrack * _instrument_track );
-	~SidInstrument() override = default;
+	~SidInstrument() override;
 
 	void playNote( NotePlayHandle * _n,
 						SampleFrame* _working_buffer ) override;
@@ -121,6 +131,15 @@ public:
 	void updateKnobToolTip();*/
 
 private:
+	enum {SIDMaxNotes = 16};
+	std::vector<struct SIDElement> m_sidStorage;
+
+	reSID::SID *getSID();
+	bool freeSID(reSID::SID *sid);
+	
+	std::atomic_flag m_lockGet;
+	void spin();
+
 	// voices
 	VoiceObject * m_voice[3];
 
