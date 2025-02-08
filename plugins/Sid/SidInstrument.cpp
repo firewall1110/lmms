@@ -140,15 +140,7 @@ SidInstrument::SidInstrument( InstrumentTrack * _instrument_track ) :
 		auto sid = new reSID::SID();
 		if (sid)
 		{
-			struct SIDElement el = { false, sid };
-			sid->set_sampling_parameters(
-				C64_PAL_CYCLES_PER_SEC, 
-				reSID::SAMPLE_FAST, 
-				Engine::audioEngine()->outputSampleRate());
-			sid->set_chip_model(reSID::MOS8580);
-			sid->enable_filter( true );
-			sid->reset();
-			m_sidStorage.push_back(el);
+			m_sidStorage.push_back(SIDElement{ false, sid });
 		} 
 		else 
 		{
@@ -492,19 +484,17 @@ gui::PluginView* SidInstrument::instantiateView( QWidget * _parent )
 reSID::SID *SidInstrument::getSID()
 {
 	spin();
-	for (unsigned n = 0; n < m_sidStorage.size(); ++n)
+	auto el = m_sidStorage.begin();
+	auto elEnd = m_sidStorage.end();
+	for (; el != elEnd; ++el)
 	{
-		if (m_sidStorage[n].sid)
+		if ((el->sid) && (!el->used))
 		{
-			if (!m_sidStorage[n].used)
-			{
-				m_sidStorage[n].used = true;
-				m_lockGet.clear(std::memory_order_release);
-				return m_sidStorage[n].sid;
-			}
+			el->used = true; 
+			m_lockGet.clear(std::memory_order_release);
+			return el->sid;
 		}
 	}
-
 	m_lockGet.clear(std::memory_order_release);
 	return nullptr;
 }
@@ -514,11 +504,13 @@ reSID::SID *SidInstrument::getSID()
 
 bool SidInstrument::freeSID(reSID::SID *sid)
 {
-	for (unsigned n = 0; n < m_sidStorage.size(); ++n)
+	auto el = m_sidStorage.begin();
+	auto elEnd = m_sidStorage.end();
+	for (; el != elEnd; ++el)
 	{
-		if (sid == m_sidStorage[n].sid)
+		if (sid == el->sid)
 		{
-			m_sidStorage[n].used = false;
+			el->used = false;
 			return true;
 		}
 	}
