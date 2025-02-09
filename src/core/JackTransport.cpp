@@ -171,20 +171,20 @@ void SyncHook::jump()
 
 void SyncHook::start()
 {
-	if (s_SyncOn)
+	if (s_SyncOn && s_SyncLead)
 	{
 		JackTransport::Start();
-		if( SyncCtl::Leader == s_SyncMode) { jump(); }
+		jump();
 	}
 }
 
 
 void SyncHook::stop()
 {
-	if (s_SyncOn)
+	if (s_SyncOn && s_SyncLead)
 	{
 		JackTransport::Stop();
-		if( SyncCtl::Leader == s_SyncMode) { jump(); }
+		jump();
 	}
 }
 
@@ -198,7 +198,7 @@ SyncCtl::SyncMode SyncCtl::toggleMode()
 	{
 		return s_SyncMode;
 	}
-	// Make state change (Master -> Slave -> Duplex -> Master -> ...)
+	// Make state change (Master -> Follower-> Duplex -> Master -> ...)
 	switch(s_SyncMode)
 	{
 	case Duplex: // Duplex -> Leader
